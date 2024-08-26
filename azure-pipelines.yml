@@ -1,32 +1,55 @@
-name: Azure Pipelines
-#Your build pipeline references the ‘BuildConfiguration’ variable, which you’ve selected to be settable at queue time. Create or edit the build pipeline for this YAML file, define the variable on the Variables tab, and then select the option to make it settable at queue time. See https://go.microsoft.com/fwlink/?linkid=865971
-#Your build pipeline references the ‘BuildConfiguration’ variable, which you’ve selected to be settable at queue time. Create or edit the build pipeline for this YAML file, define the variable on the Variables tab, and then select the option to make it settable at queue time. See https://go.microsoft.com/fwlink/?linkid=865971
+trigger:
+  branches:
+    include:
+    - main
+pool:
+  vmImage: 'windows-latest'
 variables:
-  RestoreBuildProjects: '**/*.csproj'
+- name: solution
+  value: '**/*.sln'
+- name: buildPlatform
+  value: 'Any CPU'
+- name: buildConfiguration
+  value: 'Release'
+- name: outputDirectory
+  value: '$(Build.ArtifactStagingDirectory)/$(Build.DefinitionName)'
+stages:
+- stage: __default
+  jobs:
+  - job: BuildAndPublish
+    displayName: 'Build and Publish'
+    steps:
+    - task: UseDotNet@2
+      inputs:
+        version: '8.0.102'
+        installationPath: $(Agent.ToolsDirectory)/dotnet
+    - task: DotNetCoreCLI@2
+      displayName: 'Restore NuGet packages'
+      inputs:
+        command: 'restore'
+        projects: '$(solution)'
+    - task: DotNetCoreCLI@2
+      displayName: 'Build the project'
+      inputs:
+        command: 'build'
+        projects: '$(solution)'
+        configuration: '$(buildConfiguration)'
+    - task: DotNetCoreCLI@2
+      displayName: 'Publish the project'
+      inputs:
+        command: 'publish'
+        publishWebProjects: true
+        arguments: '--configuration $(buildConfiguration) --output $(outputDirectory)'
+    - task: CopyFiles@2
+      displayName: 'Copy Files to Artifact Staging Directory'
+      inputs:
+        SourceFolder: '$(outputDirectory)'
+        Contents: '**'
+        TargetFolder: '$(Build.ArtifactStagingDirectory)/drop'
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish Artifacts'
+      inputs:
+        pathtoPublish: '$(Build.ArtifactStagingDirectory)/drop'
+        artifactName: 'drop'
+        publishLocation: 'Container'
 
-steps:
-- task: DotNetCoreCLI@2
-  displayName: Restore
-  inputs:
-    command: restore
-    projects: '$(Parameters.RestoreBuildProjects)'
-
-- task: DotNetCoreCLI@2
-  displayName: Build
-  inputs:
-    projects: '$(Parameters.RestoreBuildProjects)'
-    arguments: '--configuration $(BuildConfiguration)'
-
-- task: DotNetCoreCLI@2
-  displayName: Publish
-  inputs:
-    command: publish
-    publishWebProjects: True
-    arguments: '--configuration $(BuildConfiguration) --output $(build.artifactstagingdirectory)'
-    zipAfterPublish: True
-
-- task: PublishBuildArtifacts@1
-  displayName: 'Publish Artifact'
-  inputs:
-    PathtoPublish: '$(build.artifactstagingdirectory)'
-  condition: succeededOrFailed()
